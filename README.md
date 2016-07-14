@@ -18,5 +18,4 @@ Just execute this one-liner:
 
 ```docker run --rm -ti -v `pwd`:/out taskinen/yle-dl yle-dl [YLE-URL-TO-DOWNLOAD]```
 
-And ÂvÃ³ila, you have the downloaded file in your current
-working directory.
+Then you have the downloaded file in your current working directory.
