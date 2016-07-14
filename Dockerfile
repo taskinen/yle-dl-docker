@@ -21,3 +21,5 @@ RUN curl -L https://github.com/aajanki/yle-dl/tarball/${YLEDLVERSION} -o yledl.t
 RUN tar -xvf yledl.tar --strip-components=1
 RUN rm yledl.tar
 RUN make install
+
+WORKDIR /out
