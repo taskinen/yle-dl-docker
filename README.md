@@ -16,6 +16,6 @@ and you can use yle-dl script without hassle.
 
 Just execute this one-liner:
 
-```docker run --rm -ti -v `pwd`:/out taskinen/yle-dl yle-dl [YLE-URL-TO-DOWNLOAD]```
+```docker run --rm -ti -v `pwd`:/out taskinen/yle-dl [YLE-URL-TO-DOWNLOAD]```
 
 Then you have the downloaded file in your current working directory.
