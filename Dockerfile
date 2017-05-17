@@ -23,3 +23,4 @@ RUN rm yledl.tar
 RUN make install
 
 WORKDIR /out
+ENTRYPOINT /usr/local/bin/yle-dl
