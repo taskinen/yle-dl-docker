@@ -1,4 +1,4 @@
-FROM alpine:3.4
+FROM alpine:3.6
 MAINTAINER Timo Taskinen <timo.taskinen@iki.fi>
 
 ENV YLEDLVERSION 2.15
