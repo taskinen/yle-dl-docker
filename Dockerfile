@@ -7,9 +7,14 @@ RUN apk add --no-cache \
     bash \
     curl \
     tar \
+    gcc \
+    musl-dev \
     make \
     python \
     py-crypto \
+    python2-dev \
+    libxslt-dev \
+    libxml2-dev \
     rtmpdump \
     ffmpeg \
     php7 \
