@@ -1,7 +1,7 @@
 FROM alpine:3.6
 MAINTAINER Timo Taskinen <timo.taskinen@iki.fi>
 
-ENV YLEDLVERSION 2.20
+ENV YLEDLVERSION 2.27
 
 RUN apk add --no-cache \
     bash \
