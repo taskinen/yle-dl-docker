@@ -22,7 +22,9 @@ RUN apk add --no-cache \
     php7-curl \
     php7-mcrypt \
     php7-simplexml \
-    py-pip
+    py-pip \
+    py-setuptools \
+    py-lxml
 
 RUN pip install -U pip setuptools youtube_dl yle-dl
 
