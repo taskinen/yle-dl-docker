@@ -1,7 +1,7 @@
-FROM alpine:3.6
-MAINTAINER Timo Taskinen <timo.taskinen@iki.fi>
+FROM alpine:3.7
+LABEL maintainer="Timo Taskinen <timo.taskinen@iki.fi>"
 
-ENV YLEDLVERSION 2.27
+ENV YLEDLVERSION 2.30
 
 RUN apk add --no-cache \
     bash \
@@ -22,7 +22,9 @@ RUN apk add --no-cache \
     php7-curl \
     php7-mcrypt \
     php7-simplexml \
-    py-pip
+    py-pip \
+    py-setuptools \
+    py-lxml
 
 RUN pip install -U pip setuptools youtube_dl yle-dl
 
