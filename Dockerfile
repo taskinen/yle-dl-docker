@@ -6,25 +6,25 @@ ENV YLEDLVERSION 2.30
 RUN apk add --no-cache \
     bash \
     curl \
-    tar \
-    gcc \
-    musl-dev \
-    make \
-    python \
-    py-crypto \
-    python2-dev \
-    libxslt-dev \
-    libxml2-dev \
-    rtmpdump \
     ffmpeg \
+    gcc \
+    libxml2-dev \
+    libxslt-dev \
+    make \
+    musl-dev \
     php7 \
     php7-bcmath \
     php7-curl \
     php7-mcrypt \
     php7-simplexml \
+    py-crypto \
+    py-lxml \
     py-pip \
     py-setuptools \
-    py-lxml \
+    python \
+    python2-dev \
+    rtmpdump \
+    tar \
     wget
 
 RUN pip install -U pip setuptools youtube_dl yle-dl
