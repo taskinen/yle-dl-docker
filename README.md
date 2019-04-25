@@ -21,26 +21,3 @@ docker run --rm -ti -u=$(id -u):$(id -g) -v "$(pwd)":/out taskinen/yle-dl YLE-UR
 ```
 
 Then you have the downloaded file in your current working directory.
-
-
-## Building the container locally
-
-It is also possible to build a container locally.
-Download the Git repository containing the `Dockerfile`.
-Then run the following command to build a new container.
-
-```sh
-docker build -t taskinen/yle-dl .
-```
-
-Running the locally built container:
-
-```sh
-docker run --rm -ti -u=`id -u`:`id -g` -v "`pwd`":/out taskinen/yle-dl YLE_URL_TO_DOWNLOAD
-```
-
-Removing locally built containers:
-
-```sh
-docker image rm taskinen/yle-dl:latest
-```
