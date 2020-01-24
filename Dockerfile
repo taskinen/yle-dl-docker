@@ -1,4 +1,4 @@
-FROM alpine:3.9
+FROM alpine:latest
 LABEL maintainer="Timo Taskinen <timo.taskinen@iki.fi>"
 
 RUN apk add --no-cache \
