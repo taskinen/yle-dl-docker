@@ -15,17 +15,17 @@ RUN apk add --no-cache \
     php7-curl \
     php7-mcrypt \
     php7-simplexml \
-    py-crypto \
-    py-lxml \
-    py-pip \
-    py-setuptools \
-    python \
-    python2-dev \
+    py3-crypto \
+    py3-lxml \
+    py3-pip \
+    py3-setuptools \
+    python3 \
+    python3-dev \
     rtmpdump \
     tar \
     wget
 
-RUN pip install -U pip setuptools youtube_dl yle-dl
+RUN pip3 install -U pip setuptools youtube_dl yle-dl
 
 WORKDIR /out
 ENTRYPOINT ["yle-dl"]
