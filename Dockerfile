@@ -19,7 +19,7 @@ RUN apk add --no-cache \
     tar \
     wget
 
-RUN pip3 install -U pip setuptools yle-dl
+RUN pip3 install -U pip pysocks setuptools yle-dl
 
 WORKDIR /out
 ENTRYPOINT ["yle-dl"]
