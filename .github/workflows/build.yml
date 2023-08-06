@@ -1,0 +1,55 @@
+name: Build and push new yle-dl version
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Install xmlstarlet
+        run: |
+          sudo apt install -y xmlstarlet
+        shell: bash
+
+      - name: Check if newer yle-dl version is released
+        id: version-check
+        run: |
+          RSS='https://pypi.org/rss/project/yle-dl/releases.xml'
+          LATEST=$( curl -s ${RSS} | xmlstarlet sel -t -m "/rss/channel/item[1]" -v "title" )
+          echo "latest=${LATEST}" >> $GITHUB_OUTPUT
+          echo "Latest version for yle-dl is currently ${LATEST}"
+          if curl --silent -f --head -lL https://hub.docker.com/v2/repositories/taskinen/yle-dl/tags/${LATEST}/ > /dev/null
+          then
+            echo "Docker image for ${LATEST} is already pushed. Will not build."
+            echo "will-build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Docker image for ${LATEST} is not built. Building."
+            echo "will-build=true" >> "$GITHUB_OUTPUT"
+          fi
+        shell: bash
+
+      - name: Check out the repo
+        if: steps.version-check.outputs.will-build == 'true'
+        uses: actions/checkout@v3
+
+      - name: Log in to Docker Hub
+        if: steps.version-check.outputs.will-build == 'true'
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        if: steps.version-check.outputs.will-build == 'true'
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: taskinen/yle-dl:${{ steps.version-check.outputs.latest }},taskinen/yle-dl:latest
