@@ -52,4 +52,4 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: taskinen/yle-dl:${{ steps.version-check.outputs.latest }} taskinen/yle-dl:latest
+          tags: taskinen/yle-dl:${{ steps.version-check.outputs.latest }},taskinen/yle-dl:latest
