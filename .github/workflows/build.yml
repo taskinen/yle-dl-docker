@@ -22,7 +22,7 @@ jobs:
         run: |
           RSS='https://pypi.org/rss/project/yle-dl/releases.xml'
           LATEST=$( curl -s ${RSS} | xmlstarlet sel -t -m "/rss/channel/item[1]" -v "title" )
-          echo "latest=${LATEST}" >> "$GITHUB_OUTPUT"
+          echo "::set-env name=LATEST::${LATEST}"
           echo "Latest version for yle-dl is currently ${LATEST}"
           if curl --silent -f --head -lL https://hub.docker.com/v2/repositories/taskinen/yle-dl/tags/${LATEST}/ > /dev/null
           then
@@ -52,4 +52,4 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: taskinen/yle-dl:${{needs.version-check.outputs.latest}}
+          tags: taskinen/yle-dl:${LATEST}
