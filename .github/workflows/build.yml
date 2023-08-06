@@ -23,7 +23,8 @@ jobs:
           RSS='https://pypi.org/rss/project/yle-dl/releases.xml'
           LATEST=$( curl -s ${RSS} | xmlstarlet sel -t -m "/rss/channel/item[1]" -v "title" )
           echo "Latest version for yle-dl is currently ${LATEST}"
-          if [ curl --silent -f --head -lL https://hub.docker.com/v2/repositories/taskinen/yle-dl/tags/${LATEST}/ > /dev/null ]; then
+          if curl --silent -f --head -lL https://hub.docker.com/v2/repositories/taskinen/yle-dl/tags/${LATEST}/ > /dev/null
+          then
             echo "Docker image for ${LATEST} is already pushed. Will not build."
             exit 1
           else
