@@ -26,10 +26,10 @@ jobs:
           if curl --silent -f --head -lL https://hub.docker.com/v2/repositories/taskinen/yle-dl/tags/${LATEST}/ > /dev/null
           then
             echo "Docker image for ${LATEST} is already pushed. Will not build."
-            echo "will-build=true" >> "$GITHUB_OUTPUT"
+            echo "will-build=false" >> "$GITHUB_OUTPUT"
           else
             echo "Docker image for ${LATEST} is not built. Building."
-            echo "will-build=false" >> "$GITHUB_OUTPUT"
+            echo "will-build=true" >> "$GITHUB_OUTPUT"
           fi
         shell: bash
 
