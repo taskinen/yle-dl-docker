@@ -12,6 +12,11 @@ jobs:
 
     steps:
 
+      - name: Install xmlstarlet
+        run: |
+          sudo apt install -y xmlstarlet
+        shell: bash
+
       - name: Check if newer yle-dl version is released
         id: newer
         run: |
