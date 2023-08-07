@@ -12,9 +12,12 @@ jobs:
 
     steps:
 
+      - name: Signal start
+        run: curl -m 10 --retry 5 ${{ secrets.YLEDL_SIGNAL_START }}/start
+        shell: bash
+
       - name: Install xmlstarlet
-        run: |
-          sudo apt install -y xmlstarlet
+        run: sudo apt install -y xmlstarlet
         shell: bash
 
       - name: Check if newer yle-dl version is released
@@ -53,3 +56,7 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: taskinen/yle-dl:${{ steps.version-check.outputs.latest }},taskinen/yle-dl:latest
+
+      - name: Signal stop
+        run: curl -m 10 --retry 5 ${{ secrets.YLEDL_SIGNAL_START }}
+        shell: bash
