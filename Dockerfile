@@ -4,10 +4,11 @@ LABEL maintainer="Timo Taskinen <timo.taskinen@iki.fi>"
 RUN apk update && apk add --no-cache \
     bash \
     ffmpeg \
+    pipx \
     python3 \
     wget
 
-RUN pip3 install -U pip pysocks setuptools yle-dl
+RUN pipx install yle-dl
 
 WORKDIR /out
-ENTRYPOINT ["yle-dl"]
+ENTRYPOINT ["/root/.local/bin/yle-dl"]
