@@ -1,21 +1,20 @@
-FROM alpine:latest
+FROM python:3.12-slim
 LABEL maintainer="Timo Taskinen <timo.taskinen@iki.fi>"
 
-RUN apk update && apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     bash \
+    build-essential \
     ffmpeg \
-    gcc \
     libffi-dev \
     libxml2-dev \
     libxslt-dev \
-    make \
-    musl-dev \
     pipx \
-    python3 \
     python3-dev \
-    wget
+    wget \
+  && rm -rf /var/lib/apt/lists/*
 
-RUN pipx install yle-dl
+RUN pipx ensurepath
+RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install yle-dl
 
 WORKDIR /out
-ENTRYPOINT ["/root/.local/bin/yle-dl"]
+ENTRYPOINT ["yle-dl"]
