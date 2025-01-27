@@ -2,8 +2,13 @@ FROM python:3.13-slim
 LABEL maintainer="Timo Taskinen <timo.taskinen@iki.fi>"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     ffmpeg \
+    libffi-dev \
+    libxml2-dev \
+    libxslt-dev \
     pipx \
+    python3-dev \
     wget \
   && rm -rf /var/lib/apt/lists/*
 
