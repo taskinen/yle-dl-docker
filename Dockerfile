@@ -1,15 +1,9 @@
-FROM python:3.12-slim
+FROM python:3.13-slim
 LABEL maintainer="Timo Taskinen <timo.taskinen@iki.fi>"
 
-RUN apt-get update && apt-get install -y \
-    bash \
-    build-essential \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    libffi-dev \
-    libxml2-dev \
-    libxslt-dev \
     pipx \
-    python3-dev \
     wget \
   && rm -rf /var/lib/apt/lists/*
 
