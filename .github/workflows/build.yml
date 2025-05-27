@@ -27,12 +27,12 @@ jobs:
         run: |
           set -euo pipefail
           
-          # Get latest version from PyPI API (more reliable than RSS)
+          # Get latest version from PyPI
           LATEST=$(curl -s "https://pypi.org/pypi/yle-dl/json" | jq -r '.info.version')
           echo "latest=${LATEST}" >> $GITHUB_OUTPUT
           echo "Latest version for yle-dl is currently ${LATEST}"
           
-          # Check if Docker image already exists using Docker Hub API v2
+          # Check if Docker image already exists
           if curl --silent --fail --head "https://hub.docker.com/v2/repositories/${IMAGE_NAME}/tags/${LATEST}/" > /dev/null 2>&1; then
             echo "Docker image for ${LATEST} already exists. Will not build."
             echo "will-build=false" >> "$GITHUB_OUTPUT"
@@ -76,22 +76,22 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  notify:
+  notify-result:
     needs: [check-version, build-and-push]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Signal completion
+      - name: Signal build result
         run: |
           if [[ "${{ needs.build-and-push.result }}" == "success" || "${{ needs.check-version.outputs.will-build }}" == "false" ]]; then
             curl -m 10 --retry 5 ${{ vars.YLEDL_SIGNAL_URL }} || true
