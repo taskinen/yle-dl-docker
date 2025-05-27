@@ -4,69 +4,98 @@ on:
   schedule:
     - cron: '0 0 * * *'
   push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: taskinen/yle-dl
 
 jobs:
-
-  build:
-
+  check-version:
     runs-on: ubuntu-latest
-
+    outputs:
+      latest-version: ${{ steps.version-check.outputs.latest }}
+      will-build: ${{ steps.version-check.outputs.will-build }}
     steps:
-
       - name: Signal start
-        run: curl -m 10 --retry 5 ${{ vars.YLEDL_SIGNAL_URL }}/start
-        shell: bash
-
-      - name: Install xmlstarlet
-        run: sudo apt install -y xmlstarlet
+        run: curl -m 10 --retry 5 ${{ vars.YLEDL_SIGNAL_URL }}/start || true
         shell: bash
 
       - name: Check if newer yle-dl version is released
         id: version-check
         run: |
-          RSS='https://pypi.org/rss/project/yle-dl/releases.xml'
-          LATEST=$( curl -s ${RSS} | xmlstarlet sel -t -m "/rss/channel/item[1]" -v "title" )
+          set -euo pipefail
+          
+          # Get latest version from PyPI API (more reliable than RSS)
+          LATEST=$(curl -s "https://pypi.org/pypi/yle-dl/json" | jq -r '.info.version')
           echo "latest=${LATEST}" >> $GITHUB_OUTPUT
           echo "Latest version for yle-dl is currently ${LATEST}"
-          if curl --silent -f --head -lL https://hub.docker.com/v2/repositories/taskinen/yle-dl/tags/${LATEST}/ > /dev/null
-          then
-            echo "Docker image for ${LATEST} is already pushed. Will not build."
+          
+          # Check if Docker image already exists using Docker Hub API v2
+          if curl --silent --fail --head "https://hub.docker.com/v2/repositories/${IMAGE_NAME}/tags/${LATEST}/" > /dev/null 2>&1; then
+            echo "Docker image for ${LATEST} already exists. Will not build."
             echo "will-build=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Docker image for ${LATEST} is not built. Building."
+            echo "Docker image for ${LATEST} does not exist. Will build."
             echo "will-build=true" >> "$GITHUB_OUTPUT"
           fi
         shell: bash
 
+  build-and-push:
+    needs: check-version
+    if: needs.check-version.outputs.will-build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
       - name: Check out the repo
-        if: steps.version-check.outputs.will-build == 'true'
-        uses: actions/checkout@v3
-
-      - name: Set up QEMU
-        if: steps.version-check.outputs.will-build == 'true'
-        uses: docker/setup-qemu-action@v2
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        if: steps.version-check.outputs.will-build == 'true'
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            network=host
 
       - name: Log in to Docker Hub
-        if: steps.version-check.outputs.will-build == 'true'
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
+          registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ needs.check-version.outputs.latest-version }}
+            type=raw,value=latest
+
       - name: Build and push Docker image
-        if: steps.version-check.outputs.will-build == 'true'
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64,linux/arm/v6,linux/arm/v7
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
-          tags: taskinen/yle-dl:${{ steps.version-check.outputs.latest }},taskinen/yle-dl:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Signal stop
-        run: curl -m 10 --retry 5 ${{ vars.YLEDL_SIGNAL_URL }}
+  notify:
+    needs: [check-version, build-and-push]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Signal completion
+        run: |
+          if [[ "${{ needs.build-and-push.result }}" == "success" || "${{ needs.check-version.outputs.will-build }}" == "false" ]]; then
+            curl -m 10 --retry 5 ${{ vars.YLEDL_SIGNAL_URL }} || true
+          else
+            curl -m 10 --retry 5 ${{ vars.YLEDL_SIGNAL_URL }}/fail || true
+          fi
         shell: bash
