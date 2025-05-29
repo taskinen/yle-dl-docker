@@ -26,12 +26,12 @@ jobs:
         id: version-check
         run: |
           set -euo pipefail
-          
+
           # Get latest version from PyPI
           LATEST=$(curl -s "https://pypi.org/pypi/yle-dl/json" | jq -r '.info.version')
           echo "latest=${LATEST}" >> $GITHUB_OUTPUT
           echo "Latest version for yle-dl is currently ${LATEST}"
-          
+
           # Check if Docker image already exists
           if curl --silent --fail --head "https://hub.docker.com/v2/repositories/${IMAGE_NAME}/tags/${LATEST}/" > /dev/null 2>&1; then
             echo "Docker image for ${LATEST} already exists. Will not build."
@@ -85,6 +85,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            YLE_DL_VERSION=${{ needs.check-version.outputs.latest-version }}
 
   notify-result:
     needs: [check-version, build-and-push]
