@@ -1,4 +1,4 @@
-name: Check for new yle-dl version
+name: Check if new version of yle-dl is released
 
 on:
   schedule:

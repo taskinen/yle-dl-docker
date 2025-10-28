@@ -1,12 +1,10 @@
 name: Build and push yle-dl Docker image
 
 on:
-  push:
-    branches: [main, master]
   workflow_dispatch:
     inputs:
       version:
-        description: 'yle-dl version to build'
+        description: 'What yle-dl version to build, eg. 20250730'
         required: true
         type: string
 
@@ -15,16 +13,11 @@ env:
   IMAGE_NAME: taskinen/yle-dl
 
 jobs:
-  build-and-push:
+  prepare:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Signal start
-        run: curl -m 10 --retry 5 ${{ vars.YLEDL_SIGNAL_URL }}/start || true
-        shell: bash
-
       - name: Determine version to build
         id: version
         run: |
@@ -36,6 +29,28 @@ jobs:
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Building version: ${VERSION}"
+        shell: bash
+
+  build-platform:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+          - linux/arm/v7
+          - linux/arm/v6
+    steps:
+      - name: Prepare platform tag
+        id: platform
+        run: |
+          # Convert platform to safe tag format (e.g., linux/amd64 -> linux-amd64)
+          PLATFORM_TAG=$(echo "${{ matrix.platform }}" | tr '/' '-')
+          echo "tag=${PLATFORM_TAG}" >> $GITHUB_OUTPUT
         shell: bash
 
       - name: Check out the repo
@@ -54,36 +69,87 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Build and push Docker image by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: true
+          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=build-${{ steps.platform.outputs.tag }}
+          cache-to: type=gha,mode=max,scope=build-${{ steps.platform.outputs.tag }}
+          build-args: |
+            YLE_DL_VERSION=${{ needs.prepare.outputs.version }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+        shell: bash
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ steps.platform.outputs.tag }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  create-manifest:
+    needs: [prepare, build-platform]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digests-*
+          merge-multiple: true
+          path: /tmp/digests
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=${{ needs.prepare.outputs.version }}
             type=raw,value=latest
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            YLE_DL_VERSION=${{ steps.version.outputs.version }}
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.IMAGE_NAME }}@sha256:%s ' *)
+        shell: bash
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}
+        shell: bash
 
   notify-result:
-    needs: build-and-push
+    needs: [prepare, build-platform, create-manifest]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Signal build result
         run: |
-          if [[ "${{ needs.build-and-push.result }}" == "success" ]]; then
+          if [[ "${{ needs.create-manifest.result }}" == "success" ]]; then
             curl -m 10 --retry 5 ${{ vars.YLEDL_SIGNAL_URL }} || true
           else
             curl -m 10 --retry 5 ${{ vars.YLEDL_SIGNAL_URL }}/fail || true
