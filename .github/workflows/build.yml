@@ -1,55 +1,43 @@
-name: Build and push new yle-dl version
+name: Build and push yle-dl Docker image
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
   push:
     branches: [main, master]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'yle-dl version to build'
+        required: true
+        type: string
 
 env:
   REGISTRY: docker.io
   IMAGE_NAME: taskinen/yle-dl
 
 jobs:
-  check-version:
-    runs-on: ubuntu-latest
-    outputs:
-      latest-version: ${{ steps.version-check.outputs.latest }}
-      will-build: ${{ steps.version-check.outputs.will-build }}
-    steps:
-      - name: Signal start
-        run: curl -m 10 --retry 5 ${{ vars.YLEDL_SIGNAL_URL }}/start || true
-        shell: bash
-
-      - name: Check if newer yle-dl version is released
-        id: version-check
-        run: |
-          set -euo pipefail
-
-          # Get latest version from PyPI
-          LATEST=$(curl -s "https://pypi.org/pypi/yle-dl/json" | jq -r '.info.version')
-          echo "latest=${LATEST}" >> $GITHUB_OUTPUT
-          echo "Latest version for yle-dl is currently ${LATEST}"
-
-          # Check if Docker image already exists
-          if curl --silent --fail --head "https://hub.docker.com/v2/repositories/${IMAGE_NAME}/tags/${LATEST}/" > /dev/null 2>&1; then
-            echo "Docker image for ${LATEST} already exists. Will not build."
-            echo "will-build=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Docker image for ${LATEST} does not exist. Will build."
-            echo "will-build=true" >> "$GITHUB_OUTPUT"
-          fi
-        shell: bash
-
   build-and-push:
-    needs: check-version
-    if: needs.check-version.outputs.will-build == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
+      - name: Signal start
+        run: curl -m 10 --retry 5 ${{ vars.YLEDL_SIGNAL_URL }}/start || true
+        shell: bash
+
+      - name: Determine version to build
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            # Get latest version from PyPI if not provided
+            VERSION=$(curl -s "https://pypi.org/pypi/yle-dl/json" | jq -r '.info.version')
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Building version: ${VERSION}"
+        shell: bash
+
       - name: Check out the repo
         uses: actions/checkout@v4
 
@@ -72,7 +60,7 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ needs.check-version.outputs.latest-version }}
+            type=raw,value=${{ steps.version.outputs.version }}
             type=raw,value=latest
 
       - name: Build and push Docker image
@@ -86,16 +74,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            YLE_DL_VERSION=${{ needs.check-version.outputs.latest-version }}
+            YLE_DL_VERSION=${{ steps.version.outputs.version }}
 
   notify-result:
-    needs: [check-version, build-and-push]
+    needs: build-and-push
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Signal build result
         run: |
-          if [[ "${{ needs.build-and-push.result }}" == "success" || "${{ needs.check-version.outputs.will-build }}" == "false" ]]; then
+          if [[ "${{ needs.build-and-push.result }}" == "success" ]]; then
             curl -m 10 --retry 5 ${{ vars.YLEDL_SIGNAL_URL }} || true
           else
             curl -m 10 --retry 5 ${{ vars.YLEDL_SIGNAL_URL }}/fail || true
