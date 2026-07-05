@@ -1,0 +1,22 @@
+% rebase('base.html')
+
+<h1>yle-dl Web Interface</h1>
+
+<form method="GET" action="">
+    <div class="form-group">
+        <label for="url">YLE Areena URL:</label>
+        <input type="url" id="url" name="url"
+               placeholder="e.g. https://areena.yle.fi/..."
+               required>
+    </div>
+    <button type="submit">Start Download</button>
+</form>
+
+<div class="info">
+    <p><strong>Usage:</strong></p>
+    <p>Enter YLE Areena URL to start downloading. You can also use:</p>
+    <p><code>?url=YOUR_YLE_URL</code></p>
+    <p>Downloaded files will be saved on the server.</p>
+</div>
+
+<a href="status" class="back-link">View all jobs →</a>

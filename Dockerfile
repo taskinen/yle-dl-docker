@@ -43,8 +43,23 @@ RUN --mount=type=cache,target=/root/.cache/pipx \
         pipx install yle-dl; \
     fi
 
+# Install web interface dependencies
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir bottle ansi2html paste
+
+# Copy web application
+COPY app/ /app/
+RUN chmod +x /app/entrypoint.sh && \
+    mkdir -p /var/lib/yle-dl-web/jobs
+
 # Set working directory
 WORKDIR /out
 
-# Set entrypoint
-ENTRYPOINT ["yle-dl"]
+# Environment variables for web interface (disabled by default)
+ENV WORKERS=3
+
+# Expose web port (only used if ENABLE_WEB_UI=1)
+EXPOSE 8080
+
+# Set entrypoint (defaults to CLI, web UI if ENABLE_WEB_UI=1)
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -1,0 +1,12 @@
+services:
+  yle-dl-web:
+    build: .
+    container_name: yle-dl-web
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./downloads:/out
+    environment:
+      - ENABLE_WEB_UI=1
+      - WORKERS=3

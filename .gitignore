@@ -1,0 +1,7 @@
+# Downloaded media and job metadata
+downloads/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class

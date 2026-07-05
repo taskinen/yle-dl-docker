@@ -1,0 +1,8 @@
+# Python bytecode — the only thing that could leak into the image via
+# `COPY app/`, since app/ may contain a __pycache__.
+__pycache__/
+*.py[cod]
+
+# Keep the build context small / out of the daemon.
+.git
+downloads/

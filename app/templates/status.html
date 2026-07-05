@@ -1,0 +1,115 @@
+% rebase('base.html', title=f'Download Status - {job_id}')
+
+<h1>Download Status</h1>
+
+<div id="status" class="status {{status}}">
+    <span>Status: <span id="status-text">{{status}}</span></span>
+    <button id="cancel-btn" class="cancel-btn">Cancel</button>
+</div>
+
+<div id="output" class="output-container"></div>
+
+<a href="./" class="back-link">← Start new download</a>
+&nbsp;·&nbsp;
+<a href="status" class="back-link">View all jobs →</a>
+
+<script>
+    const jobId = '{{job_id}}';
+    const outputDiv = document.getElementById('output');
+    const statusDiv = document.getElementById('status');
+    const statusText = document.getElementById('status-text');
+    const cancelBtn = document.getElementById('cancel-btn');
+
+    const FINAL_STATES = ['completed', 'failed', 'cancelled'];
+
+    // True when the view is scrolled (near) the bottom. A small tolerance
+    // absorbs sub-pixel rounding from progress lines.
+    function isAtBottom() {
+        return outputDiv.scrollHeight - outputDiv.scrollTop - outputDiv.clientHeight < 40;
+    }
+    function scrollToBottom() {
+        outputDiv.scrollTop = outputDiv.scrollHeight;
+    }
+
+    // The transient "live" line, mirroring a terminal line that yle-dl keeps
+    // overwriting with '\r'. It's a single element kept at the bottom of the
+    // output; committed lines are inserted before it, and it's removed/updated
+    // as progress events arrive so old progress ticks never pile up.
+    let progressEl = null;
+    function setProgress(html) {
+        if (html === null) {
+            // Progress finished: drop the live line.
+            if (progressEl) { progressEl.remove(); progressEl = null; }
+            return;
+        }
+        const stick = isAtBottom();
+        if (!progressEl) {
+            progressEl = document.createElement('div');
+            progressEl.className = 'output-line';
+            outputDiv.appendChild(progressEl);
+        }
+        progressEl.innerHTML = html;
+        if (stick) scrollToBottom();
+    }
+    function appendLine(html) {
+        const stick = isAtBottom();
+        const lineDiv = document.createElement('div');
+        lineDiv.className = 'output-line';
+        lineDiv.innerHTML = html;
+        // Keep committed lines above the live progress line, if present.
+        outputDiv.insertBefore(lineDiv, progressEl);
+        if (stick) scrollToBottom();
+    }
+
+    function updateCancelButton(status) {
+        // Only show Cancel while the job is still active.
+        cancelBtn.style.display = FINAL_STATES.includes(status) ? 'none' : '';
+    }
+    updateCancelButton('{{status}}');
+
+    cancelBtn.addEventListener('click', function() {
+        cancelBtn.disabled = true;
+        cancelBtn.textContent = 'Cancelling...';
+        fetch('api/job/' + jobId + '/cancel', { method: 'POST' })
+            .catch(err => {
+                console.error('Cancel failed:', err);
+                cancelBtn.disabled = false;
+                cancelBtn.textContent = 'Cancel';
+            });
+    });
+
+    // Connect to SSE stream (relative URL)
+    const eventSource = new EventSource('stream/' + jobId);
+
+    eventSource.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'snapshot') {
+            // Backlog delivered atomically as the first event on the stream, so
+            // there's no gap or overlap with the live events that follow.
+            data.lines.forEach(line => appendLine(line));
+            setProgress(data.progress);
+            scrollToBottom();
+        } else if (data.type === 'line') {
+            appendLine(data.line);
+        } else if (data.type === 'progress') {
+            // A '\r' redraw: update the single live line in place.
+            setProgress(data.line);
+        } else if (data.type === 'status') {
+            // Update status text AND class
+            statusText.textContent = data.status;
+            statusDiv.className = 'status ' + data.status;
+            updateCancelButton(data.status);
+
+            // Close connection if done
+            if (FINAL_STATES.includes(data.status)) {
+                eventSource.close();
+            }
+        }
+    };
+
+    eventSource.onerror = function() {
+        console.error('SSE error');
+        eventSource.close();
+    };
+</script>
