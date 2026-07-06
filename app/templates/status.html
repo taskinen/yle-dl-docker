@@ -1,5 +1,26 @@
 % rebase('base.html', title=f'Download Status - {job_id}')
 
+<style>
+    /* Anchor the floating button to the output box. */
+    .output-wrap { position: relative; }
+    #scroll-bottom-btn {
+        position: absolute;
+        bottom: 16px;
+        right: 24px;
+        padding: 8px 14px;
+        background: #0066cc;
+        color: #fff;
+        border: none;
+        border-radius: 20px;
+        font-size: 13px;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+        opacity: 0.92;
+    }
+    #scroll-bottom-btn:hover { background: #0052a3; opacity: 1; }
+    #scroll-bottom-btn[hidden] { display: none; }
+</style>
+
 <h1>Download Status</h1>
 
 <div id="status" class="status {{status}}">
@@ -7,7 +28,10 @@
     <button id="cancel-btn" class="cancel-btn">Cancel</button>
 </div>
 
-<div id="output" class="output-container"></div>
+<div class="output-wrap">
+    <div id="output" class="output-container"></div>
+    <button id="scroll-bottom-btn" type="button" hidden>↓ Scroll to bottom</button>
+</div>
 
 <a href="./" class="back-link">← Start new download</a>
 &nbsp;·&nbsp;
@@ -19,6 +43,7 @@
     const statusDiv = document.getElementById('status');
     const statusText = document.getElementById('status-text');
     const cancelBtn = document.getElementById('cancel-btn');
+    const scrollBtn = document.getElementById('scroll-bottom-btn');
 
     const FINAL_STATES = ['completed', 'failed', 'cancelled'];
 
@@ -31,6 +56,28 @@
         outputDiv.scrollTop = outputDiv.scrollHeight;
     }
 
+    // Whether the view should follow new output. Driven by the user's scroll
+    // position, NOT recomputed per event: measuring geometry at each append is
+    // fragile under a fast burst — a read taken mid-reflow, or during a
+    // progress-line add/remove, can report the wrong distance and silently
+    // drop the "stick" even though the user never scrolled up. Instead we
+    // update the flag from real 'scroll' events (including the ones our own
+    // scrollToBottom() fires), so it stays correct no matter how fast output
+    // arrives and only turns off when the user actually scrolls away.
+    let stickToBottom = true;
+    function updateScrollButton() {
+        scrollBtn.hidden = stickToBottom;
+    }
+    outputDiv.addEventListener('scroll', function() {
+        stickToBottom = isAtBottom();
+        updateScrollButton();
+    });
+    scrollBtn.addEventListener('click', function() {
+        // Fires a 'scroll' event, which flips stickToBottom back on and hides
+        // the button via the listener above.
+        scrollToBottom();
+    });
+
     // The transient "live" line, mirroring a terminal line that yle-dl keeps
     // overwriting with '\r'. It's a single element kept at the bottom of the
     // output; committed lines are inserted before it, and it's removed/updated
@@ -38,27 +85,27 @@
     let progressEl = null;
     function setProgress(html) {
         if (html === null) {
-            // Progress finished: drop the live line.
+            // Progress finished: drop the live line. Removing it shrinks the
+            // content, so re-pin if we were following.
             if (progressEl) { progressEl.remove(); progressEl = null; }
+            if (stickToBottom) scrollToBottom();
             return;
         }
-        const stick = isAtBottom();
         if (!progressEl) {
             progressEl = document.createElement('div');
             progressEl.className = 'output-line';
             outputDiv.appendChild(progressEl);
         }
         progressEl.innerHTML = html;
-        if (stick) scrollToBottom();
+        if (stickToBottom) scrollToBottom();
     }
     function appendLine(html) {
-        const stick = isAtBottom();
         const lineDiv = document.createElement('div');
         lineDiv.className = 'output-line';
         lineDiv.innerHTML = html;
         // Keep committed lines above the live progress line, if present.
         outputDiv.insertBefore(lineDiv, progressEl);
-        if (stick) scrollToBottom();
+        if (stickToBottom) scrollToBottom();
     }
 
     function updateCancelButton(status) {
