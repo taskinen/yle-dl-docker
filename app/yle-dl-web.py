@@ -6,8 +6,13 @@ Streams yle-dl output to browser in real-time via SSE
 
 import os
 import io
+import pty
+import errno
+import fcntl
 import json
 import uuid
+import struct
+import termios
 import subprocess
 import threading
 import time
@@ -223,16 +228,44 @@ class JobManager:
         self.update_job(job_id, status='downloading')
         self.notify_status(job_id, 'downloading')
 
+        master_fd = None
+        stream = None
         try:
-            # Run yle-dl
+            # Run yle-dl attached to a pseudo-terminal. yle-dl shells out to
+            # wget for direct file downloads, and wget checks isatty(stdout):
+            # on a terminal it draws a single-line progress bar redrawn with
+            # '\r'; on a plain pipe it falls back to verbose multi-line "dot"
+            # output. Giving the child a PTY makes it emit the same clean
+            # single-line progress the CLI shows, which the '\r'/'\n' loop
+            # below already knows how to render. (ffmpeg, used for streams,
+            # writes '\r' progress either way.)
+            master_fd, slave_fd = pty.openpty()
+
+            # Disable ONLCR on the slave: without this the tty layer rewrites
+            # the child's '\n' into '\r\n', which would leave a stray '\r' on
+            # every committed line. With it off the byte stream matches the CLI
+            # exactly (bare '\r' for redraws, bare '\n' for committed lines).
+            attrs = termios.tcgetattr(slave_fd)
+            attrs[1] &= ~termios.ONLCR  # oflag
+            termios.tcsetattr(slave_fd, termios.TCSANOW, attrs)
+
+            # Give wget a roomy width so its progress bar isn't cramped.
+            fcntl.ioctl(slave_fd, termios.TIOCSWINSZ,
+                        struct.pack('HHHH', 24, 120, 0, 0))
+
             # Pass '--' so the URL is never interpreted as yle-dl option,
             # even if validation is ever relaxed.
             process = subprocess.Popen(
                 ['yle-dl', '--', job['url']],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                cwd=str(OUTPUT_DIR)
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                cwd=str(OUTPUT_DIR),
+                close_fds=True
             )
+            # The child holds its own copy of the slave; close ours so that
+            # reads on the master see EOF once the child exits.
+            os.close(slave_fd)
 
             # Register the process so it can be cancelled. If a cancel arrived
             # while the job was still queued, terminate immediately.
@@ -241,12 +274,13 @@ class JobManager:
                     process.terminate()
                 self.processes[job_id] = process
 
-            # Wrap stdout with newline='' so lone '\r' is preserved instead of
-            # being translated to '\n' by universal-newline mode. yle-dl/ffmpeg
-            # redraw progress on one terminal line with '\r'; we mirror that so
-            # the web view shows a single updating line, not one line per tick.
+            # Read the master end. newline='' preserves lone '\r' instead of
+            # letting universal-newline mode translate it to '\n'. yle-dl/wget/
+            # ffmpeg redraw progress on one terminal line with '\r'; we mirror
+            # that so the web view shows a single updating line, not one per tick.
             stream = io.TextIOWrapper(
-                process.stdout, encoding='utf-8', errors='replace', newline=''
+                os.fdopen(master_fd, 'rb', buffering=0),
+                encoding='utf-8', errors='replace', newline=''
             )
 
             # Model the terminal's active line. yle-dl redraws progress with
@@ -258,27 +292,38 @@ class JobManager:
             # onto the previous progress text.
             current_line = ''       # content shown on the live (unfinished) line
             progress_active = False  # a '\r' redraw is currently displayed
-            for chunk in stream:
-                if chunk.endswith('\r'):
-                    # Progress redraw: update the live line in place.
-                    current_line = chunk[:-1]
-                    progress_active = True
-                    self.update_progress(job_id, self._convert_ansi(current_line))
-                else:
-                    # Committed by '\n' (or the final unterminated EOF chunk).
-                    # Non-empty text overwrites the live line; a bare newline
-                    # commits whatever the live line already held.
-                    # A bare newline (empty text) commits whatever the live
-                    # line already held; otherwise this chunk's text is the line.
-                    text = chunk.rstrip('\n')
-                    committed = text if text else current_line
-                    if committed.strip():
-                        self.append_output(job_id, self._convert_ansi(committed))
-                    if progress_active:
-                        # The live line has been finalized; clear the transient.
-                        self.update_progress(job_id, None)
-                        progress_active = False
-                    current_line = ''
+            try:
+                for chunk in stream:
+                    if chunk.endswith('\r'):
+                        # Progress redraw: update the live line in place.
+                        current_line = chunk[:-1]
+                        progress_active = True
+                        self.update_progress(job_id, self._convert_ansi(current_line))
+                    else:
+                        # Committed by '\n' (or the final unterminated EOF chunk).
+                        # Non-empty text overwrites the live line; a bare newline
+                        # commits whatever the live line already held.
+                        # A bare newline (empty text) commits whatever the live
+                        # line already held; otherwise this chunk's text is the line.
+                        # Strip a trailing '\r' too: over a PTY, wget ends its
+                        # final progress redraw with '\r' right before the '\n',
+                        # yielding a '\r\n' chunk — the '\r' is cursor control,
+                        # never content.
+                        text = chunk.rstrip('\r\n')
+                        committed = text if text else current_line
+                        if committed.strip():
+                            self.append_output(job_id, self._convert_ansi(committed))
+                        if progress_active:
+                            # The live line has been finalized; clear the transient.
+                            self.update_progress(job_id, None)
+                            progress_active = False
+                        current_line = ''
+            except OSError as e:
+                # Reading a PTY master after the child has closed the slave
+                # raises EIO on Linux instead of returning EOF. Treat it as a
+                # clean end of stream; re-raise anything else.
+                if e.errno != errno.EIO:
+                    raise
 
             # Commit any progress text left on the live line at EOF, then clear
             # the transient so the frontend doesn't show it twice.
@@ -324,6 +369,16 @@ class JobManager:
             )
             self.notify_status(job_id, 'failed')
         finally:
+            # Close the PTY master. If the TextIOWrapper was created it owns
+            # the fd; otherwise close the raw fd directly. Guard against a
+            # double close (e.g. spawn failed before the wrapper existed).
+            try:
+                if stream is not None:
+                    stream.close()
+                elif master_fd is not None:
+                    os.close(master_fd)
+            except OSError:
+                pass
             with self.lock:
                 self.processes.pop(job_id, None)
 
